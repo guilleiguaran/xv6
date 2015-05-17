@@ -1,5 +1,6 @@
 #include "types.h"
 #include "user.h"
+#include "fcntl.h"
 
 int nums[1000000];
 
@@ -21,7 +22,8 @@ int check(int n)
 
 int main()
 {
-	int i, pid;
+	int i, pid, fd;
+	char content = 'a';
 	printf(0, "Test the speed of fork...\n");
 	for(i = 0; i < 10; ++i)
 	{
@@ -48,7 +50,7 @@ int main()
 	{
 		pid = wait();
 		if(check(1))
-			printf(1, "Error\n");
+			printf(1, "Error in child write\n");
 	}
 
 	pid = fork();
@@ -56,7 +58,7 @@ int main()
 	{
 		sleep(200);
 		if(check(1))
-			printf(1, "Error\n");
+			printf(1, "Error in parent write\n");
 		exit();
 	}
 	else
@@ -65,6 +67,28 @@ int main()
 		pid = wait();
 	}
 
+	fd = open("cowtest_temp", O_CREATE|O_WRONLY);
+	write(fd, &content, 1);
+	close(fd);
+	content = 'b';
+
+	pid = fork();
+	if(pid == 0)
+	{
+		fd = open("cowtest_temp", O_RDONLY);
+		read(fd, &content, 1);
+		exit();
+	}
+	else
+	{
+		pid = wait();
+		if(content != 'b')
+			printf(1, "Error in child kernel write\n");
+	}
+
+	unlink("cowtest_temp");
+
 	printf(0, "Finish\n");
+
 	exit();
 }
