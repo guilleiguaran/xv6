@@ -109,36 +109,28 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
 // between V2P(end) and the end of physical memory (PHYSTOP)
 // (directly addressable from end..P2V(PHYSTOP)).
 
-// This table defines the kernel's mappings, which are present in
-// every process's page table.
-static struct kmap {
-  void *virt;
-  uint phys_start;
-  uint phys_end;
-  int perm;
-} kmap[] = {
- { (void*)KERNBASE, 0,             EXTMEM,    PTE_W}, // I/O space
- { (void*)KERNLINK, V2P(KERNLINK), V2P(data), 0},     // kern text+rodata
- { (void*)data,     V2P(data),     PHYSTOP,   PTE_W}, // kern data+memory
- { (void*)DEVSPACE, DEVSPACE,      0,         PTE_W}, // more devices
-};
 
 // Set up kernel part of a page table.
 pde_t*
 setupkvm(void)
 {
   pde_t *pgdir;
-  struct kmap *k;
+  int i;
 
   if((pgdir = (pde_t*)kalloc()) == 0)
     return 0;
   memset(pgdir, 0, PGSIZE);
   if (p2v(PHYSTOP) > (void*)DEVSPACE)
     panic("PHYSTOP too high");
-  for(k = kmap; k < &kmap[NELEM(kmap)]; k++)
-    if(mappages(pgdir, k->virt, k->phys_end - k->phys_start, 
-                (uint)k->phys_start, k->perm) < 0)
-      return 0;
+
+  // Use huge pages to map 0..PHYSTOP to KERNBASE
+  for(i = KERNBASE >> PDXSHIFT; i < (KERNBASE + PHYSTOP) >> PDXSHIFT; ++i)
+    pgdir[i] = ((i << PDXSHIFT) - KERNBASE) | PTE_P | PTE_W | PTE_PS;
+
+  // Use huge pages to map DEVSPACE..0 to DEVSPACE
+  for(i = DEVSPACE >> PDXSHIFT; i < NPDENTRIES; ++i)
+    pgdir[i] = (i << PDXSHIFT) | PTE_P | PTE_W | PTE_PS;
+
   return pgdir;
 }
 
@@ -281,7 +273,7 @@ freevm(pde_t *pgdir)
   if(pgdir == 0)
     panic("freevm: no pgdir");
   deallocuvm(pgdir, KERNBASE, 0);
-  for(i = 0; i < NPDENTRIES; i++){
+  for(i = 0; i < KERNBASE >> PDXSHIFT; i++){
     if(pgdir[i] & PTE_P){
       char * v = p2v(PTE_ADDR(pgdir[i]));
       kfree(v);
