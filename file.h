@@ -3,6 +3,7 @@ struct file {
   int ref; // reference count
   char readable;
   char writable;
+  char append;
   struct pipe *pipe;
   struct inode *ip;
   uint off;
